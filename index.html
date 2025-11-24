@@ -200,26 +200,12 @@
             
             <div style="margin-bottom: 8px;">
                 <label style="font-size: 11px;">Gravity:</label>
-                <input type="range" id="gravity" min="0.01" max="2" step="0.01" value="0.05" oninput="updateLayoutSettingDisplay()">
-                <span id="gravity-value" style="font-size: 11px;">0.05</span>
+                <input type="number" id="gravity" min="0.01" max="2" step="0.01" value="0.05" style="width: 100%; padding: 4px;" oninput="updateLayoutSettingDisplay()">
             </div>
             
             <div style="margin-bottom: 8px;">
                 <label style="font-size: 11px;">Scaling Ratio (Repulsion):</label>
-                <input type="range" id="scaling-ratio" min="1" max="50" step="1" value="10" oninput="updateLayoutSettingDisplay()">
-                <span id="scaling-ratio-value" style="font-size: 11px;">10</span>
-            </div>
-            
-            <div style="margin-bottom: 8px;">
-                <label style="font-size: 11px;">Slow Down (Speed):</label>
-                <input type="range" id="slow-down" min="0.1" max="5" step="0.1" value="1" oninput="updateLayoutSettingDisplay()">
-                <span id="slow-down-value" style="font-size: 11px;">1</span>
-            </div>
-            
-            <div style="margin-bottom: 8px;">
-                <label style="font-size: 11px;">Edge Weight Influence:</label>
-                <input type="range" id="edge-weight-influence" min="0" max="2" step="0.1" value="1" oninput="updateLayoutSettingDisplay()">
-                <span id="edge-weight-value" style="font-size: 11px;">1</span>
+                <input type="number" id="scaling-ratio" min="1" max="50" step="1" value="10" style="width: 100%; padding: 4px;" oninput="updateLayoutSettingDisplay()">
             </div>
             
             <div style="margin-bottom: 8px;">
@@ -472,8 +458,8 @@
                 strongGravityMode: document.getElementById('strong-gravity').checked,
                 gravity: parseFloat(document.getElementById('gravity').value),
                 scalingRatio: parseFloat(document.getElementById('scaling-ratio').value),
-                slowDown: parseFloat(document.getElementById('slow-down').value),
-                edgeWeightInfluence: parseFloat(document.getElementById('edge-weight-influence').value),
+                slowDown: 5,
+                edgeWeightInfluence: 1,
                 linLogMode: document.getElementById('lin-log-mode').checked
             };
             
@@ -539,10 +525,7 @@
         }
         
         function updateLayoutSettingDisplay() {
-            document.getElementById('gravity-value').textContent = document.getElementById('gravity').value;
-            document.getElementById('scaling-ratio-value').textContent = document.getElementById('scaling-ratio').value;
-            document.getElementById('slow-down-value').textContent = document.getElementById('slow-down').value;
-            document.getElementById('edge-weight-value').textContent = document.getElementById('edge-weight-influence').value;
+            // No display updates needed for number inputs
         }
         
         function stopLayout() {
