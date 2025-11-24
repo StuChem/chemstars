@@ -12,6 +12,9 @@ on:
   schedule:
     - cron: '0 0 * * *'  # Runs at midnight UTC daily
 
+permissions:
+  contents: write
+
 jobs:
   update-data:
     runs-on: ubuntu-latest
