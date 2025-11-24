@@ -1,0 +1,962 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Startup Network Viewer</title>
+    <meta charset="utf-8">
+    <style>
+        body { 
+            margin: 0; 
+            padding: 0; 
+            font-family: Arial, sans-serif; 
+            background-color: #f5f5f5;
+        }
+        
+        #header {
+            background-color: #2c3e50;
+            color: white;
+            padding: 15px 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        #header h1 {
+            margin: 0;
+            font-size: 24px;
+        }
+        
+        #controls {
+            position: absolute;
+            top: 80px;
+            left: 20px;
+            z-index: 1000;
+            background-color: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            min-width: 250px;
+            max-height: calc(100vh - 120px);
+            overflow-y: auto;
+        }
+        
+        #controls h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+            color: #2c3e50;
+        }
+        
+        .control-group {
+            margin-bottom: 15px;
+        }
+        
+        .control-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #34495e;
+            font-size: 13px;
+        }
+        
+        button {
+            background-color: #34495e;
+            color: white;
+            border: none;
+            padding: 8px 15px;
+            margin: 2px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 13px;
+        }
+        
+        button:hover {
+            background-color: #2c3e50;
+        }
+        
+        button:disabled {
+            background-color: #bdc3c7;
+            cursor: not-allowed;
+        }
+        
+        .btn-primary {
+            background-color: #3498db;
+        }
+        
+        .btn-primary:hover {
+            background-color: #2980b9;
+        }
+        
+        .btn-success {
+            background-color: #27ae60;
+        }
+        
+        .btn-success:hover {
+            background-color: #229954;
+        }
+        
+        .btn-small {
+            font-size: 11px;
+            padding: 5px 10px;
+        }
+        
+        .filter-section {
+            margin-bottom: 10px;
+            padding: 8px;
+            background-color: #f8f9fa;
+            border-radius: 4px;
+            border: 1px solid #e9ecef;
+        }
+        
+        .filter-section label {
+            font-size: 11px;
+            margin-bottom: 5px;
+        }
+        
+        .checkbox-label {
+            font-size: 11px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            margin-bottom: 3px;
+            font-weight: normal;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+        }
+        
+        input[type="text"] {
+            width: 100%;
+            padding: 5px;
+            border: 1px solid #ddd;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        
+        #sigma-container {
+            width: 100%;
+            height: calc(100vh - 60px);
+            background-color: #ffffff;
+        }
+        
+        #loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #7f8c8d;
+            font-size: 18px;
+            z-index: 500;
+        }
+        
+        #stats {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            background-color: white;
+            padding: 10px 15px;
+            border-radius: 6px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            font-size: 12px;
+            color: #7f8c8d;
+        }
+        
+        .hidden {
+            display: none;
+        }
+        
+        #layout-controls {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>🌐 Startup Network Viewer</h1>
+    </div>
+    
+    <div id="loading">
+        <div>📊 Loading network data...</div>
+        <div style="margin-top: 10px; font-size: 14px;">Please wait while we build the graph</div>
+    </div>
+    
+    <div id="controls" class="hidden">
+        <h3>🎛️ Controls</h3>
+        
+        <div class="control-group">
+            <label>Layout:</label>
+            <div id="layout-controls">
+                <button onclick="runForceAtlas2()" class="btn-primary btn-small" id="layout-btn">▶️ Run Layout</button>
+                <button onclick="stopLayout()" class="btn-small" id="stop-btn" disabled>⏸️ Stop</button>
+                <button onclick="resetPositions()" class="btn-small">🔄 Reset Positions</button>
+            </div>
+            <div style="margin-top: 5px; font-size: 10px; color: #7f8c8d;">
+                <span id="layout-status">Ready</span>
+            </div>
+        </div>
+        
+        <div class="control-group">
+            <label>Layout Settings:</label>
+            
+            <div style="margin-bottom: 8px;">
+                <label style="font-size: 11px;">Gravity:</label>
+                <input type="range" id="gravity" min="0.01" max="2" step="0.01" value="0.05" oninput="updateLayoutSettingDisplay()">
+                <span id="gravity-value" style="font-size: 11px;">0.05</span>
+            </div>
+            
+            <div style="margin-bottom: 8px;">
+                <label style="font-size: 11px;">Scaling Ratio (Repulsion):</label>
+                <input type="range" id="scaling-ratio" min="1" max="50" step="1" value="10" oninput="updateLayoutSettingDisplay()">
+                <span id="scaling-ratio-value" style="font-size: 11px;">10</span>
+            </div>
+            
+            <div style="margin-bottom: 8px;">
+                <label style="font-size: 11px;">Slow Down (Speed):</label>
+                <input type="range" id="slow-down" min="0.1" max="5" step="0.1" value="1" oninput="updateLayoutSettingDisplay()">
+                <span id="slow-down-value" style="font-size: 11px;">1</span>
+            </div>
+            
+            <div style="margin-bottom: 8px;">
+                <label style="font-size: 11px;">Edge Weight Influence:</label>
+                <input type="range" id="edge-weight-influence" min="0" max="2" step="0.1" value="1" oninput="updateLayoutSettingDisplay()">
+                <span id="edge-weight-value" style="font-size: 11px;">1</span>
+            </div>
+            
+            <div style="margin-bottom: 8px;">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="barnes-hut" checked> Barnes-Hut Optimization
+                </label>
+            </div>
+            
+            <div style="margin-bottom: 8px;">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="strong-gravity"> Strong Gravity Mode
+                </label>
+            </div>
+            
+            <div style="margin-bottom: 8px;">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="lin-log-mode"> LinLog Mode
+                </label>
+            </div>
+        </div>
+        
+        <div class="control-group">
+            <label>View:</label>
+            <button onclick="zoomIn()">🔍 Zoom In</button>
+            <button onclick="zoomOut()">🔍 Zoom Out</button>
+            <button onclick="resetView()">🎯 Reset View</button>
+        </div>
+        
+        <div class="control-group">
+            <label>Node Size:</label>
+            <input type="range" id="node-size" min="1" max="10" value="3" oninput="updateNodeSize(this.value)">
+            <span id="node-size-value">3</span>
+        </div>
+        
+        <div class="control-group">
+            <label>Edge Thickness:</label>
+            <input type="range" id="edge-size" min="0.5" max="3" step="0.5" value="1" oninput="updateEdgeSize(this.value)">
+            <span id="edge-size-value">1</span>
+        </div>
+        
+        <div class="control-group">
+            <label>Display:</label>
+            <button onclick="toggleLabels()" id="labels-toggle">🏷️ Hide Labels</button>
+        </div>
+        
+        <div class="control-group">
+            <label>🔍 Filters:</label>
+            <button onclick="toggleFilterMode()" id="filter-mode-btn" style="font-size: 11px; padding: 4px 8px; margin-bottom: 8px;">Logic: OR</button>
+            
+            <div class="filter-section">
+                <label>Connection Types:</label>
+                <div>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="filter-competency" onchange="updateFilters()"> Competencies
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="filter-impact" onchange="updateFilters()"> Impact
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="filter-city" onchange="updateFilters()"> Cities
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="filter-country" onchange="updateFilters()"> Countries
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="filter-region" onchange="updateFilters()"> Regions
+                    </label>
+                </div>
+            </div>
+            
+            <div class="filter-section">
+                <label>Node Display:</label>
+                <label class="checkbox-label">
+                    <input type="checkbox" id="show-all-nodes" checked onchange="updateFilters()"> Show All Nodes
+                </label>
+                <div style="font-size: 9px; color: #7f8c8d; margin-top: 3px;">
+                    When unchecked, only shows nodes with visible connections
+                </div>
+            </div>
+            
+            <div class="filter-section">
+                <label>Edge Weight:</label>
+                <div style="display: flex; gap: 5px; align-items: center; font-size: 11px;">
+                    <span>Min:</span>
+                    <input type="range" id="weight-min" min="1" max="20" value="1" style="width: 60px;" oninput="updateFilters()">
+                    <span id="weight-min-value">1</span>
+                    <span>Max:</span>
+                    <input type="range" id="weight-max" min="1" max="20" value="20" style="width: 60px;" oninput="updateFilters()">
+                    <span id="weight-max-value">20</span>
+                </div>
+            </div>
+            
+            <div class="filter-section">
+                <label>Search Nodes:</label>
+                <input type="text" id="search-nodes" placeholder="Type to search..." oninput="updateFilters()">
+            </div>
+            
+            <button onclick="clearAllFilters()" class="btn-small">Clear All Filters</button>
+        </div>
+    </div>
+    
+    <div id="sigma-container"></div>
+    
+    <div id="stats" class="hidden">
+        <div id="graph-stats"></div>
+    </div>
+
+    <!-- Include graphology and sigma.js from CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/graphology@0.25.4/dist/graphology.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/sigma@2.4.0/build/sigma.min.js"></script>
+    <script type="module">
+        import forceAtlas2 from 'https://cdn.jsdelivr.net/npm/graphology-layout-forceatlas2@0.10.1/+esm';
+        window.forceAtlas2 = forceAtlas2;
+    </script>
+    
+    <script>
+        let sigmaInstance = null;
+        let graph = null;
+        let showLabels = true;
+        let layoutWorker = null;
+        let layoutRunning = false;
+        let originalEdgeColors = new Map();
+        let originalEdgeSizes = new Map();
+        let filterMode = 'OR'; // 'OR' or 'AND'
+        let activeFilters = {
+            types: [],
+            weightMin: 1,
+            weightMax: 20,
+            searchText: '',
+            showAllNodes: true
+        };
+        
+        // Initialize by loading the JSON data
+        async function init() {
+            try {
+                console.log('Loading network data...');
+                const response = await fetch('network_data.json');
+                const data = await response.json();
+                
+                console.log(`Loaded ${data.nodes.length} nodes and ${data.edges.length} edges`);
+                
+                // Create graph using graphology (accessing from global)
+                const Graph = graphology.Graph;
+                graph = new Graph({ type: 'undirected' });
+                
+                // Add nodes
+                data.nodes.forEach(node => {
+                    graph.addNode(node.id, {
+                        label: node.label,
+                        x: Math.random() * 100,
+                        y: Math.random() * 100,
+                        size: 3,
+                        color: '#95a5a6',
+                        description: node.description || '',
+                        website: node.website || '',
+                        logo_url: node.logo_url || ''
+                    });
+                });
+                
+                // Add edges
+                data.edges.forEach(edge => {
+                    try {
+                        const edgeAttrs = {
+                            weight: edge.weight,
+                            size: Math.min(3, edge.weight * 0.3),
+                            color: '#bdc3c7',
+                            label: edge.label_detailed || edge.label,
+                            types: edge.types || [],
+                            is_competency: edge.is_competency || false,
+                            is_impact: edge.is_impact || false,
+                            is_city: edge.is_city || false,
+                            is_country: edge.is_country || false,
+                            is_region: edge.is_region || false,
+                            competencies: edge.competencies || [],
+                            impacts: edge.impacts || [],
+                            cities: edge.cities || [],
+                            countries: edge.countries || [],
+                            regions: edge.regions || []
+                        };
+                        
+                        graph.addEdge(edge.source, edge.target, edgeAttrs);
+                        
+                        // Store original color and size for hover interactions
+                        const edgeKey = graph.edge(edge.source, edge.target);
+                        originalEdgeColors.set(edgeKey, '#bdc3c7');
+                        originalEdgeSizes.set(edgeKey, edgeAttrs.size);
+                    } catch (e) {
+                        // Edge might already exist, skip
+                        console.warn(`Skipping duplicate edge: ${edge.source} - ${edge.target}`);
+                    }
+                });
+                
+                console.log(`Graph built: ${graph.order} nodes, ${graph.size} edges`);
+                
+                // Create sigma instance (check if Sigma exists in global scope)
+                if (typeof Sigma === 'undefined') {
+                    throw new Error('Sigma is not defined - library did not load correctly');
+                }
+                
+                sigmaInstance = new Sigma(graph, document.getElementById('sigma-container'), {
+                    renderLabels: showLabels,
+                    renderEdgeLabels: false,
+                    labelFont: 'Arial',
+                    labelSize: 12,
+                    labelWeight: 'normal',
+                    minCameraRatio: 0.1,
+                    maxCameraRatio: 10,
+                    enableEdgeHoverEvents: true,
+                    enableEdgeClickEvents: true
+                });
+                
+                // Setup interactions
+                setupHoverInteractions();
+                
+                document.getElementById('loading').classList.add('hidden');
+                document.getElementById('controls').classList.remove('hidden');
+                document.getElementById('stats').classList.remove('hidden');
+                
+                updateStats();
+                
+                console.log('✅ Initialization complete');
+                
+            } catch (error) {
+                console.error('Error loading data:', error);
+                document.getElementById('loading').innerHTML = 
+                    `<div style="color: #e74c3c;">❌ Error loading network data</div>
+                     <div style="font-size: 14px; margin-top: 10px;">${error.message}</div>`;
+            }
+        }
+        
+        function runForceAtlas2() {
+            if (!graph || layoutRunning) return;
+            
+            console.log('Starting Force Atlas 2 layout...');
+            
+            if (typeof window.forceAtlas2 === 'undefined') {
+                console.error('Force Atlas 2 library not loaded');
+                document.getElementById('layout-status').textContent = 'Error: Layout library not loaded';
+                return;
+            }
+            
+            layoutRunning = true;
+            document.getElementById('layout-btn').disabled = true;
+            document.getElementById('stop-btn').disabled = false;
+            document.getElementById('layout-status').textContent = 'Running...';
+            
+            // Get settings from UI controls
+            const settings = {
+                barnesHutOptimize: document.getElementById('barnes-hut').checked,
+                strongGravityMode: document.getElementById('strong-gravity').checked,
+                gravity: parseFloat(document.getElementById('gravity').value),
+                scalingRatio: parseFloat(document.getElementById('scaling-ratio').value),
+                slowDown: parseFloat(document.getElementById('slow-down').value),
+                edgeWeightInfluence: parseFloat(document.getElementById('edge-weight-influence').value),
+                linLogMode: document.getElementById('lin-log-mode').checked
+            };
+            
+            console.log('Layout settings:', settings);
+            
+            // Create a filtered graph that only contains visible edges
+            const Graph = graphology.Graph;
+            const filteredGraph = new Graph({ type: 'undirected' });
+            
+            // Add all nodes with their positions
+            graph.forEachNode((node, attributes) => {
+                filteredGraph.addNode(node, attributes);
+            });
+            
+            // Only add visible edges
+            let visibleEdgeCount = 0;
+            graph.forEachEdge((edge, attributes, source, target) => {
+                if (!attributes.hidden) {
+                    try {
+                        filteredGraph.addEdge(source, target, attributes);
+                        visibleEdgeCount++;
+                    } catch (e) {
+                        // Edge might already exist, skip
+                    }
+                }
+            });
+            
+            console.log(`Running layout on ${filteredGraph.order} nodes and ${visibleEdgeCount} visible edges`);
+            
+            if (visibleEdgeCount === 0) {
+                console.warn('No visible edges to layout');
+                document.getElementById('layout-status').textContent = 'No edges to layout';
+                stopLayout();
+                return;
+            }
+            
+            let iteration = 0;
+            const maxIterations = 300;
+            
+            layoutWorker = setInterval(() => {
+                if (iteration >= maxIterations) {
+                    stopLayout();
+                    return;
+                }
+                
+                // Run layout on filtered graph
+                window.forceAtlas2.assign(filteredGraph, { iterations: 1, settings: settings });
+                
+                // Copy positions back to original graph
+                filteredGraph.forEachNode((node, attributes) => {
+                    graph.setNodeAttribute(node, 'x', attributes.x);
+                    graph.setNodeAttribute(node, 'y', attributes.y);
+                });
+                
+                sigmaInstance.refresh();
+                iteration++;
+                
+                if (iteration % 10 === 0) {
+                    document.getElementById('layout-status').textContent = 
+                        `Running... ${Math.round((iteration / maxIterations) * 100)}%`;
+                }
+            }, 10);
+        }
+        
+        function updateLayoutSettingDisplay() {
+            document.getElementById('gravity-value').textContent = document.getElementById('gravity').value;
+            document.getElementById('scaling-ratio-value').textContent = document.getElementById('scaling-ratio').value;
+            document.getElementById('slow-down-value').textContent = document.getElementById('slow-down').value;
+            document.getElementById('edge-weight-value').textContent = document.getElementById('edge-weight-influence').value;
+        }
+        
+        function stopLayout() {
+            if (layoutWorker) {
+                clearInterval(layoutWorker);
+                layoutWorker = null;
+            }
+            layoutRunning = false;
+            document.getElementById('layout-btn').disabled = false;
+            document.getElementById('stop-btn').disabled = true;
+            document.getElementById('layout-status').textContent = 'Ready';
+            console.log('Layout stopped');
+        }
+        
+        function resetPositions() {
+            if (!graph) return;
+            
+            stopLayout();
+            
+            // Randomize positions
+            graph.forEachNode((node) => {
+                graph.setNodeAttribute(node, 'x', Math.random() * 100);
+                graph.setNodeAttribute(node, 'y', Math.random() * 100);
+            });
+            
+            sigmaInstance.refresh();
+            resetView();
+        }
+        
+        function setupHoverInteractions() {
+            if (!sigmaInstance) return;
+            
+            let hoveredNode = null;
+            let hoveredEdge = null;
+            
+            // Node hover events
+            sigmaInstance.on('enterNode', (event) => {
+                hoveredNode = event.node;
+                const nodeAttributes = graph.getNodeAttributes(event.node);
+                
+                // Show tooltip
+                showHoverTooltip(event.event.x, event.event.y, {
+                    title: nodeAttributes.label || event.node,
+                    type: 'node',
+                    attributes: nodeAttributes
+                });
+                
+                // Highlight connected edges
+                graph.forEachEdge((edge, attributes) => {
+                    const [source, target] = graph.extremities(edge);
+                    if ((source === event.node || target === event.node) && !attributes.hidden) {
+                        const originalSize = originalEdgeSizes.get(edge) || 1;
+                        graph.setEdgeAttribute(edge, 'color', '#ff6b6b');
+                        graph.setEdgeAttribute(edge, 'size', originalSize * 2);
+                    }
+                });
+                
+                sigmaInstance.refresh();
+            });
+            
+            sigmaInstance.on('leaveNode', (event) => {
+                if (hoveredNode === event.node) {
+                    hoveredNode = null;
+                    hideHoverTooltip();
+                    
+                    // Reset edge colors
+                    graph.forEachEdge((edge, attributes) => {
+                        if (!attributes.hidden) {
+                            const originalColor = originalEdgeColors.get(edge) || '#bdc3c7';
+                            const originalSize = originalEdgeSizes.get(edge) || 1;
+                            graph.setEdgeAttribute(edge, 'color', originalColor);
+                            graph.setEdgeAttribute(edge, 'size', originalSize);
+                        }
+                    });
+                    
+                    sigmaInstance.refresh();
+                }
+            });
+            
+            sigmaInstance.on('clickNode', (event) => {
+                const nodeData = graph.getNodeAttributes(event.node);
+                console.log('Clicked node:', event.node, nodeData);
+                
+                if (nodeData.website) {
+                    window.open(nodeData.website, '_blank');
+                }
+            });
+            
+            // Edge hover events
+            sigmaInstance.on('enterEdge', (event) => {
+                console.log('enterEdge fired:', event);
+                const edge = event.edge;
+                const edgeAttributes = graph.getEdgeAttributes(edge);
+                console.log('Edge attributes:', edgeAttributes);
+                if (edgeAttributes.hidden) return;
+                
+                hoveredEdge = edge;
+                
+                const [source, target] = graph.extremities(edge);
+                const sourceAttrs = graph.getNodeAttributes(source);
+                const targetAttrs = graph.getNodeAttributes(target);
+                
+                // Highlight the edge - make it red and 3x bigger
+                const originalSize = originalEdgeSizes.get(edge) || 1;
+                graph.setEdgeAttribute(edge, 'color', '#e74c3c');
+                graph.setEdgeAttribute(edge, 'size', originalSize * 3);
+                sigmaInstance.refresh();
+                
+                // Build tooltip content
+                let tooltipHTML = `<strong>${sourceAttrs.label}</strong> ↔ <strong>${targetAttrs.label}</strong><br><br>`;
+                tooltipHTML += `<strong>Shared Connections (${edgeAttributes.weight}):</strong><br>`;
+                
+                const connections = [];
+                if (edgeAttributes.competencies && edgeAttributes.competencies.length > 0) {
+                    connections.push(`<span style="color: #f39c12;">●</span> <strong>Competencies:</strong> ${edgeAttributes.competencies.join(', ')}`);
+                }
+                if (edgeAttributes.impacts && edgeAttributes.impacts.length > 0) {
+                    connections.push(`<span style="color: #9b59b6;">●</span> <strong>Impacts:</strong> ${edgeAttributes.impacts.join(', ')}`);
+                }
+                if (edgeAttributes.cities && edgeAttributes.cities.length > 0) {
+                    connections.push(`<span style="color: #e74c3c;">●</span> <strong>Cities:</strong> ${edgeAttributes.cities.join(', ')}`);
+                }
+                if (edgeAttributes.countries && edgeAttributes.countries.length > 0) {
+                    connections.push(`<span style="color: #2ecc71;">●</span> <strong>Countries:</strong> ${edgeAttributes.countries.join(', ')}`);
+                }
+                if (edgeAttributes.regions && edgeAttributes.regions.length > 0) {
+                    connections.push(`<span style="color: #3498db;">●</span> <strong>Regions:</strong> ${edgeAttributes.regions.join(', ')}`);
+                }
+                
+                tooltipHTML += connections.join('<br>');
+                
+                // Show tooltip
+                showHoverTooltip(event.event.x, event.event.y, {
+                    title: tooltipHTML,
+                    type: 'edge',
+                    attributes: edgeAttributes,
+                    source: source,
+                    target: target,
+                    isHTML: true
+                });
+            });
+            
+            sigmaInstance.on('leaveEdge', (event) => {
+                const edge = event.edge;
+                if (hoveredEdge === edge) {
+                    hoveredEdge = null;
+                    hideHoverTooltip();
+                    
+                    // Reset edge color and size
+                    const edgeAttributes = graph.getEdgeAttributes(edge);
+                    if (!edgeAttributes.hidden) {
+                        const originalColor = originalEdgeColors.get(edge) || '#bdc3c7';
+                        const originalSize = originalEdgeSizes.get(edge) || 1;
+                        graph.setEdgeAttribute(edge, 'color', originalColor);
+                        graph.setEdgeAttribute(edge, 'size', originalSize);
+                        sigmaInstance.refresh();
+                    }
+                }
+            });
+        }
+        
+        function showHoverTooltip(x, y, data) {
+            let tooltip = document.getElementById('hover-tooltip');
+            if (!tooltip) {
+                tooltip = document.createElement('div');
+                tooltip.id = 'hover-tooltip';
+                tooltip.style.position = 'absolute';
+                tooltip.style.background = 'rgba(0,0,0,0.9)';
+                tooltip.style.color = 'white';
+                tooltip.style.padding = '12px';
+                tooltip.style.borderRadius = '6px';
+                tooltip.style.fontSize = '13px';
+                tooltip.style.zIndex = '10000';
+                tooltip.style.pointerEvents = 'none';
+                tooltip.style.maxWidth = '400px';
+                tooltip.style.lineHeight = '1.4';
+                tooltip.style.boxShadow = '0 4px 6px rgba(0,0,0,0.3)';
+                document.body.appendChild(tooltip);
+            }
+            
+            let content;
+            if (data.isHTML) {
+                content = data.title;
+            } else {
+                content = `<strong>${data.title}</strong>`;
+                if (data.type === 'edge' && data.source && data.target) {
+                    content += `<br><small>From: ${data.source}<br>To: ${data.target}</small>`;
+                    if (data.attributes.weight) {
+                        content += `<br><small>Weight: ${data.attributes.weight}</small>`;
+                    }
+                }
+            }
+            
+            tooltip.innerHTML = content;
+            tooltip.style.left = (x + 15) + 'px';
+            tooltip.style.top = (y + 15) + 'px';
+            tooltip.style.display = 'block';
+        }
+        
+        function hideHoverTooltip() {
+            const tooltip = document.getElementById('hover-tooltip');
+            if (tooltip) {
+                tooltip.style.display = 'none';
+            }
+        }
+        
+        function zoomIn() {
+            if (sigmaInstance) {
+                const camera = sigmaInstance.getCamera();
+                camera.animatedZoom({ duration: 200 });
+            }
+        }
+        
+        function zoomOut() {
+            if (sigmaInstance) {
+                const camera = sigmaInstance.getCamera();
+                camera.animatedUnzoom({ duration: 200 });
+            }
+        }
+        
+        function resetView() {
+            if (sigmaInstance) {
+                const camera = sigmaInstance.getCamera();
+                camera.animatedReset({ duration: 500 });
+            }
+        }
+        
+        function updateNodeSize(value) {
+            document.getElementById('node-size-value').textContent = value;
+            if (graph && sigmaInstance) {
+                graph.forEachNode((node) => {
+                    graph.setNodeAttribute(node, 'size', parseFloat(value));
+                });
+                sigmaInstance.refresh();
+            }
+        }
+        
+        function updateEdgeSize(value) {
+            document.getElementById('edge-size-value').textContent = value;
+            if (graph && sigmaInstance) {
+                graph.forEachEdge((edge, attributes) => {
+                    const thickness = Math.max(0.5, attributes.weight * parseFloat(value) * 0.3);
+                    graph.setEdgeAttribute(edge, 'size', thickness);
+                });
+                sigmaInstance.refresh();
+            }
+        }
+        
+        function toggleLabels() {
+            showLabels = !showLabels;
+            if (sigmaInstance) {
+                sigmaInstance.setSetting('renderLabels', showLabels);
+                sigmaInstance.refresh();
+            }
+            document.getElementById('labels-toggle').textContent = 
+                showLabels ? '🏷️ Hide Labels' : '🏷️ Show Labels';
+        }
+        
+        function toggleFilterMode() {
+            filterMode = filterMode === 'OR' ? 'AND' : 'OR';
+            const btn = document.getElementById('filter-mode-btn');
+            btn.textContent = `Logic: ${filterMode}`;
+            btn.style.backgroundColor = filterMode === 'AND' ? '#27ae60' : '#34495e';
+            updateFilters();
+        }
+        
+        function clearAllFilters() {
+            ['filter-competency', 'filter-impact', 'filter-city', 'filter-country', 'filter-region'].forEach(id => {
+                document.getElementById(id).checked = false;
+            });
+            
+            document.getElementById('weight-min').value = 1;
+            document.getElementById('weight-max').value = 20;
+            document.getElementById('search-nodes').value = '';
+            document.getElementById('show-all-nodes').checked = true;
+            
+            activeFilters = {
+                types: [],
+                weightMin: 1,
+                weightMax: 20,
+                searchText: '',
+                showAllNodes: true
+            };
+            
+            updateFilters();
+        }
+        
+        function updateFilters() {
+            const weightMin = parseInt(document.getElementById('weight-min').value);
+            const weightMax = parseInt(document.getElementById('weight-max').value);
+            document.getElementById('weight-min-value').textContent = weightMin;
+            document.getElementById('weight-max-value').textContent = weightMax;
+            
+            const typeFilters = [];
+            ['competency', 'impact', 'city', 'country', 'region'].forEach(type => {
+                if (document.getElementById(`filter-${type}`).checked) {
+                    typeFilters.push(type);
+                }
+            });
+            
+            activeFilters = {
+                types: typeFilters,
+                weightMin: weightMin,
+                weightMax: weightMax,
+                searchText: document.getElementById('search-nodes').value.toLowerCase().trim(),
+                showAllNodes: document.getElementById('show-all-nodes').checked
+            };
+            
+            applyFilters();
+        }
+        
+        function applyFilters() {
+            if (!graph || !sigmaInstance) return;
+            
+            // Show all initially
+            graph.forEachNode((node) => {
+                graph.setNodeAttribute(node, 'hidden', false);
+            });
+            
+            graph.forEachEdge((edge) => {
+                graph.setEdgeAttribute(edge, 'hidden', false);
+                const originalColor = originalEdgeColors.get(edge) || '#bdc3c7';
+                graph.setEdgeAttribute(edge, 'color', originalColor);
+            });
+            
+            // Apply edge type filters
+            if (activeFilters.types.length > 0) {
+                graph.forEachEdge((edge, attributes) => {
+                    let shouldShow;
+                    if (filterMode === 'OR') {
+                        // OR logic: show edge if it matches ANY selected type
+                        shouldShow = activeFilters.types.some(type => attributes[`is_${type}`] === true);
+                    } else {
+                        // AND logic: show edge if it matches ALL selected types
+                        shouldShow = activeFilters.types.every(type => attributes[`is_${type}`] === true);
+                    }
+                    graph.setEdgeAttribute(edge, 'hidden', !shouldShow);
+                    
+                    // Color code by type if visible and single filter
+                    if (shouldShow && activeFilters.types.length === 1) {
+                        const type = activeFilters.types[0];
+                        const colors = {
+                            'city': '#e74c3c',
+                            'country': '#2ecc71',
+                            'competency': '#f39c12',
+                            'impact': '#9b59b6',
+                            'region': '#3498db'
+                        };
+                        graph.setEdgeAttribute(edge, 'color', colors[type] || '#bdc3c7');
+                    }
+                });
+            }
+            
+            // Apply weight filters
+            graph.forEachEdge((edge, attributes) => {
+                if (!attributes.hidden) {
+                    const weight = attributes.weight || 1;
+                    if (weight < activeFilters.weightMin || weight > activeFilters.weightMax) {
+                        graph.setEdgeAttribute(edge, 'hidden', true);
+                    }
+                }
+            });
+            
+            // Apply node search filter
+            if (activeFilters.searchText) {
+                graph.forEachNode((node, attributes) => {
+                    if (!attributes.label?.toLowerCase().includes(activeFilters.searchText)) {
+                        graph.setNodeAttribute(node, 'hidden', true);
+                    }
+                });
+            }
+            
+            // Hide nodes with no visible edges (unless showAllNodes is checked)
+            if (!activeFilters.showAllNodes && (activeFilters.types.length > 0 || activeFilters.weightMin > 1 || activeFilters.weightMax < 20)) {
+                graph.forEachNode((node, attributes) => {
+                    if (!attributes.hidden) {
+                        const hasVisibleEdge = graph.edges(node).some(edge => 
+                            !graph.getEdgeAttribute(edge, 'hidden')
+                        );
+                        if (!hasVisibleEdge) {
+                            graph.setNodeAttribute(node, 'hidden', true);
+                        }
+                    }
+                });
+            }
+            
+            sigmaInstance.refresh();
+            updateStats();
+        }
+        
+        function updateStats() {
+            if (!graph) return;
+            
+            let visibleNodes = 0;
+            let visibleEdges = 0;
+            
+            graph.forEachNode((node, attributes) => {
+                if (!attributes.hidden) visibleNodes++;
+            });
+            
+            graph.forEachEdge((edge, attributes) => {
+                if (!attributes.hidden) visibleEdges++;
+            });
+            
+            const statsEl = document.getElementById('graph-stats');
+            statsEl.innerHTML = `
+                <strong>Network Stats:</strong><br>
+                📍 Nodes: ${visibleNodes}/${graph.order}<br>
+                🔗 Edges: ${visibleEdges}/${graph.size}
+            `;
+        }
+        
+        // Start initialization when page loads
+        window.addEventListener('load', init);
+    </script>
+</body>
+</html>
