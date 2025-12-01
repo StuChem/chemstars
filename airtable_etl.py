@@ -109,14 +109,18 @@ def process_records(records):
         
         # Extract connection fields
         competencies = clean_array_field(fields.get('Core Competencies', []))
+        technical_competencies = clean_array_field(fields.get('Technical Competencies (Test)', []))
         impacts = clean_array_field(fields.get('Impact', []))
         countries = clean_array_field(fields.get('Location (Country)', []))
         cities = clean_array_field(fields.get('Location (City)', []))
         regions = clean_array_field(fields.get('Region', []))
+        cohorts = clean_array_field(fields.get('Cohort', []))
         
         # Index connections by type
         for comp in competencies:
             connection_index[('competency', comp)].append(startup_name)
+        for tech_comp in technical_competencies:
+            connection_index[('technical_competency', tech_comp)].append(startup_name)
         for impact in impacts:
             connection_index[('impact', impact)].append(startup_name)
         for country in countries:
@@ -125,6 +129,8 @@ def process_records(records):
             connection_index[('city', city)].append(startup_name)
         for region in regions:
             connection_index[('region', region)].append(startup_name)
+        for cohort in cohorts:
+            connection_index[('cohort', cohort)].append(startup_name)
     
     print(f"   Created {len(nodes)} nodes")
     print(f"   Found {len(connection_index)} unique connection values\n")
@@ -137,10 +143,12 @@ def process_records(records):
         'types': set(),
         'connections': set(),
         'competencies': set(),
+        'technical_competencies': set(),
         'impacts': set(),
         'cities': set(),
         'countries': set(),
-        'regions': set()
+        'regions': set(),
+        'cohorts': set()
     })
     
     for (conn_type, conn_value), startup_list in connection_index.items():
@@ -160,6 +168,8 @@ def process_records(records):
             # Track by specific type for filtering
             if conn_type == 'competency':
                 edge_info['competencies'].add(conn_value)
+            elif conn_type == 'technical_competency':
+                edge_info['technical_competencies'].add(conn_value)
             elif conn_type == 'impact':
                 edge_info['impacts'].add(conn_value)
             elif conn_type == 'city':
@@ -168,6 +178,8 @@ def process_records(records):
                 edge_info['countries'].add(conn_value)
             elif conn_type == 'region':
                 edge_info['regions'].add(conn_value)
+            elif conn_type == 'cohort':
+                edge_info['cohorts'].add(conn_value)
     
     # Build final edges list
     edges = []
@@ -176,12 +188,18 @@ def process_records(records):
         label_parts = []
         if info['competencies']:
             label_parts.append('; '.join(sorted(info['competencies'])))
+        if info['technical_competencies']:
+            label_parts.append('; '.join(sorted(info['technical_competencies'])))
         if info['impacts']:
             label_parts.append('; '.join(sorted(info['impacts'])))
         if info['cities']:
             label_parts.append('; '.join([normalize_location(c) for c in sorted(info['cities'])]))
         if info['countries']:
             label_parts.append('; '.join([normalize_location(c) for c in sorted(info['countries'])]))
+        if info['regions']:
+            label_parts.append('; '.join(sorted(info['regions'])))
+        if info['cohorts']:
+            label_parts.append('; '.join(sorted(info['cohorts'])))
         
         label_detailed = ', '.join(label_parts)
         
@@ -198,15 +216,19 @@ def process_records(records):
             'label_detailed': label_detailed,
             'types': list(info['types']),
             'is_competency': 'competency' in info['types'],
+            'is_technical_competency': 'technical_competency' in info['types'],
             'is_impact': 'impact' in info['types'],
             'is_city': 'city' in info['types'],
             'is_country': 'country' in info['types'],
             'is_region': 'region' in info['types'],
+            'is_cohort': 'cohort' in info['types'],
             'competencies': list(info['competencies']),
+            'technical_competencies': list(info['technical_competencies']),
             'impacts': list(info['impacts']),
             'cities': list(info['cities']),
             'countries': list(info['countries']),
-            'regions': list(info['regions'])
+            'regions': list(info['regions']),
+            'cohorts': list(info['cohorts'])
         }
         edges.append(edge)
     

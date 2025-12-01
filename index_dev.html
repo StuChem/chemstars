@@ -137,6 +137,26 @@
             margin: 2px 0;
         }
         
+        .geography-btn {
+            padding: 6px 10px;
+            font-size: 10px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            background: #ecf0f1;
+            color: #2c3e50;
+            transition: background 0.2s;
+        }
+        
+        .geography-btn:hover {
+            background: #bdc3c7;
+        }
+        
+        .geography-btn.active {
+            background: #3498db;
+            color: white;
+        }
+        
         #legend {
             position: absolute;
             top: 80px;
@@ -311,16 +331,31 @@
         </div>
         
         <div class="control-group">
+            <label>🎨 Node Geography:</label>
+            <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 5px;">
+                <button onclick="toggleNodeGeography('country')" id="node-country-btn" class="geography-btn">🌍 Color by Country</button>
+                <button onclick="toggleNodeGeography('region')" id="node-region-btn" class="geography-btn">🗺️ Color by Region</button>
+                <button onclick="toggleNodeGeography('city')" id="node-city-btn" class="geography-btn">🏙️ Color by City</button>
+                <button onclick="resetNodeColors()" class="geography-btn" style="background: #95a5a6;">🔄 Reset</button>
+            </div>
+        </div>
+        
+        <div class="control-group">
             <label>🔍 Filters:</label>
-            <button onclick="toggleFilterMode()" id="filter-mode-btn" style="font-size: 11px; padding: 4px 8px; margin-bottom: 8px;">Logic: OR</button>
+            <div style="font-size: 10px; color: #7f8c8d; margin-bottom: 8px; font-style: italic;">AND between categories, OR within each category</div>
             
             <div class="filter-section">
-                <label>Connection Types:</label>
+                <label>Connection Types: <span style="font-size: 9px; color: #95a5a6;">(check any values to filter)</span></label>
                 <div>
                     <label class="checkbox-label">
                         <input type="checkbox" id="filter-competency" onchange="toggleConnectionType('competency')"> Competencies
                     </label>
                     <div id="submenu-competency" class="submenu"></div>
+                    
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="filter-technical_competency" onchange="toggleConnectionType('technical_competency')"> Technical Competencies
+                    </label>
+                    <div id="submenu-technical_competency" class="submenu"></div>
                     
                     <label class="checkbox-label">
                         <input type="checkbox" id="filter-impact" onchange="toggleConnectionType('impact')"> Impact
@@ -341,6 +376,11 @@
                         <input type="checkbox" id="filter-region" onchange="toggleConnectionType('region')"> Regions
                     </label>
                     <div id="submenu-region" class="submenu"></div>
+                    
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="filter-cohort" onchange="toggleConnectionType('cohort')"> Cohorts
+                    </label>
+                    <div id="submenu-cohort" class="submenu"></div>
                 </div>
             </div>
             
@@ -382,20 +422,7 @@
     </div>
     
             <div id="legend" class="hidden">
-                <h3>🎨 Legend</h3>
-                <div style="margin-bottom: 12px; padding: 8px; background: #f8f9fa; border-radius: 4px;">
-                    <div style="font-size: 11px; color: #7f8c8d; margin-bottom: 6px;">Apply geographic colors to:</div>
-                    <div style="display: flex; gap: 12px; font-size: 11px;">
-                        <label style="cursor: pointer; display: flex; align-items: center; gap: 4px;">
-                            <input type="radio" name="colorMode" value="node" checked onchange="toggleColorMode('node')">
-                            Nodes
-                        </label>
-                        <label style="cursor: pointer; display: flex; align-items: center; gap: 4px;">
-                            <input type="radio" name="colorMode" value="edge" onchange="toggleColorMode('edge')">
-                            Edges
-                        </label>
-                    </div>
-                </div>
+                <h3>🎨 Edge Filter Legend</h3>
                 <div id="legend-content"></div>
             </div>    <!-- Include graphology and sigma.js from CDN -->
     <script src="https://cdn.jsdelivr.net/npm/graphology@0.25.4/dist/graphology.umd.min.js"></script>
@@ -414,8 +441,7 @@
         let originalNodeColors = new Map();
         let originalEdgeColors = new Map();
         let originalEdgeSizes = new Map();
-        let filterMode = 'OR'; // 'OR' or 'AND'
-        let colorMode = 'node'; // 'node' or 'edge' - determines where geographic colors are applied
+        let nodeGeographyMode = null; // 'country', 'region', 'city', or null for no geography coloring
         let activeFilters = {
             types: [],
             values: {}, // e.g., { competency: ['Hydrogen', 'Battery'], region: ['Berlin'] }
@@ -438,10 +464,12 @@
         // Track available values for each connection type
         let availableValues = {
             competency: new Set(),
+            technical_competency: new Set(),
             impact: new Set(),
             city: new Set(),
             country: new Set(),
-            region: new Set()
+            region: new Set(),
+            cohort: new Set()
         };
         
         // Color assignments for specific values
@@ -451,7 +479,7 @@
         async function init() {
             try {
                 console.log('Loading network data...');
-                const response = await fetch('network_data.json');
+                const response = await fetch('network_data.json?v=' + Date.now());
                 const data = await response.json();
                 
                 console.log(`Loaded ${data.nodes.length} nodes and ${data.edges.length} edges`);
@@ -477,6 +505,7 @@
                 });
                 
                 // Add edges
+                console.log('Sample edge from JSON:', data.edges.find(e => e.technical_competencies?.length > 0));
                 data.edges.forEach(edge => {
                     try {
                         const edgeAttrs = {
@@ -486,15 +515,19 @@
                             label: edge.label_detailed || edge.label,
                             types: edge.types || [],
                             is_competency: edge.is_competency || false,
+                            is_technical_competency: edge.is_technical_competency || false,
                             is_impact: edge.is_impact || false,
                             is_city: edge.is_city || false,
                             is_country: edge.is_country || false,
                             is_region: edge.is_region || false,
+                            is_cohort: edge.is_cohort || false,
                             competencies: edge.competencies || [],
+                            technical_competencies: edge.technical_competencies || [],
                             impacts: edge.impacts || [],
                             cities: edge.cities || [],
                             countries: edge.countries || [],
-                            regions: edge.regions || []
+                            regions: edge.regions || [],
+                            cohorts: edge.cohorts || []
                         };
                         
                         graph.addEdge(edge.source, edge.target, edgeAttrs);
@@ -559,6 +592,9 @@
                 if (attributes.competencies) {
                     attributes.competencies.forEach(val => availableValues.competency.add(val));
                 }
+                if (attributes.technical_competencies) {
+                    attributes.technical_competencies.forEach(val => availableValues.technical_competency.add(val));
+                }
                 if (attributes.impacts) {
                     attributes.impacts.forEach(val => availableValues.impact.add(val));
                 }
@@ -571,28 +607,53 @@
                 if (attributes.regions) {
                     attributes.regions.forEach(val => availableValues.region.add(val));
                 }
+                if (attributes.cohorts) {
+                    attributes.cohorts.forEach(val => availableValues.cohort.add(val));
+                }
             });
             
             console.log('Available values collected:', {
                 competencies: availableValues.competency.size,
+                technical_competencies: availableValues.technical_competency.size,
                 impacts: availableValues.impact.size,
                 cities: availableValues.city.size,
                 countries: availableValues.country.size,
-                regions: availableValues.region.size
+                regions: availableValues.region.size,
+                cohorts: availableValues.cohort.size
             });
         }
         
         function buildValueSubmenus() {
-            const types = ['competency', 'impact', 'city', 'country', 'region'];
+            const types = ['competency', 'technical_competency', 'impact', 'city', 'country', 'region', 'cohort'];
             
             types.forEach(type => {
                 const submenu = document.getElementById(`submenu-${type}`);
-                const values = Array.from(availableValues[type]).sort();
+                // Sort cohorts numerically, others alphabetically
+                let values;
+                if (type === 'cohort') {
+                    values = Array.from(availableValues[type]).sort((a, b) => {
+                        const numA = parseInt(a.match(/\d+/)?.[0] || '0');
+                        const numB = parseInt(b.match(/\d+/)?.[0] || '0');
+                        return numA - numB;
+                    });
+                } else {
+                    values = Array.from(availableValues[type]).sort();
+                }
                 
                 if (values.length === 0) {
                     submenu.innerHTML = '<div style="font-size: 10px; color: #95a5a6; padding: 5px;">No values found</div>';
                     return;
                 }
+                
+                // Add "Select All" button
+                const selectAllBtn = document.createElement('button');
+                selectAllBtn.textContent = 'Select All';
+                selectAllBtn.className = 'select-all-btn';
+                selectAllBtn.style.cssText = 'width: 100%; padding: 5px; margin-bottom: 8px; background: #3498db; color: white; border: none; border-radius: 3px; cursor: pointer; font-size: 11px;';
+                selectAllBtn.onmouseover = function() { this.style.background = '#2980b9'; };
+                selectAllBtn.onmouseout = function() { this.style.background = '#3498db'; };
+                selectAllBtn.onclick = function() { selectAllValues(type); };
+                submenu.appendChild(selectAllBtn);
                 
                 values.forEach(value => {
                     const label = document.createElement('label');
@@ -662,46 +723,119 @@
             updateFilters();
         }
         
+        function selectAllValues(type) {
+            const submenu = document.getElementById(`submenu-${type}`);
+            const checkboxes = submenu.querySelectorAll('input[type="checkbox"][data-type="' + type + '"]');
+            
+            // Check all checkboxes
+            checkboxes.forEach(cb => {
+                if (!cb.checked) {
+                    cb.checked = true;
+                    const value = cb.getAttribute('data-value');
+                    if (!activeFilters.values[type]) {
+                        activeFilters.values[type] = [];
+                    }
+                    if (!activeFilters.values[type].includes(value)) {
+                        activeFilters.values[type].push(value);
+                        assignColorToValue(type, value);
+                    }
+                }
+            });
+            
+            updateFilters();
+        }
+        
         function updateLegend() {
             const legendContent = document.getElementById('legend-content');
             legendContent.innerHTML = '';
             
-            // Categorize filters by type
-            const capabilityTypes = ['competency', 'impact'];
-            const geoTypes = ['city', 'country', 'region'];
-            const typeLabels = {
-                competency: 'Competencies',
-                impact: 'Impact',
-                city: 'Cities',
-                country: 'Countries',
-                region: 'Regions'
-            };
-            
             let hasItems = false;
             
-            // Add geographic filters section (node colors)
-            const activeGeoTypes = geoTypes.filter(type => 
-                activeFilters.values[type] && activeFilters.values[type].length > 0
-            );
-            
-            if (activeGeoTypes.length > 0) {
+            // Show node geography colors if active
+            if (nodeGeographyMode) {
                 const geoHeader = document.createElement('div');
                 geoHeader.style.fontWeight = 'bold';
                 geoHeader.style.fontSize = '12px';
                 geoHeader.style.marginBottom = '8px';
                 geoHeader.style.color = '#2c3e50';
-                geoHeader.innerHTML = colorMode === 'node' ? '📍 Node Colors (Geography)' : '🔗 Edge Colors (Geography)';
+                geoHeader.innerHTML = `📍 Node Colors (${nodeGeographyMode.charAt(0).toUpperCase() + nodeGeographyMode.slice(1)})`;
                 legendContent.appendChild(geoHeader);
                 
-                activeGeoTypes.forEach(type => {
-                    const subHeader = document.createElement('div');
-                    subHeader.style.fontWeight = 'bold';
-                    subHeader.style.marginTop = '8px';
-                    subHeader.style.marginBottom = '4px';
-                    subHeader.style.fontSize = '10px';
-                    subHeader.style.color = '#7f8c8d';
-                    subHeader.textContent = typeLabels[type];
-                    legendContent.appendChild(subHeader);
+                // Collect unique geographic values and their colors
+                const geoValues = new Set();
+                const geoValueColors = {};
+                
+                graph.forEachEdge((edge, attributes) => {
+                    let edgeGeoValues = [];
+                    if (nodeGeographyMode === 'country' && attributes.countries) {
+                        edgeGeoValues = attributes.countries;
+                    } else if (nodeGeographyMode === 'region' && attributes.regions) {
+                        edgeGeoValues = attributes.regions;
+                    } else if (nodeGeographyMode === 'city' && attributes.cities) {
+                        edgeGeoValues = attributes.cities;
+                    }
+                    
+                    edgeGeoValues.forEach(geoValue => {
+                        geoValues.add(geoValue);
+                    });
+                });
+                
+                // Assign colors (same logic as applyNodeGeographyColoring)
+                Array.from(geoValues).sort().forEach((value, index) => {
+                    geoValueColors[value] = diversePalette[index % diversePalette.length];
+                });
+                
+                // Display legend items
+                Object.entries(geoValueColors).forEach(([value, color]) => {
+                    const item = document.createElement('div');
+                    item.className = 'legend-item';
+                    item.style.display = 'flex';
+                    item.style.alignItems = 'center';
+                    item.style.gap = '6px';
+                    item.style.marginLeft = '8px';
+                    
+                    const colorBox = document.createElement('div');
+                    colorBox.style.width = '20px';
+                    colorBox.style.height = '20px';
+                    colorBox.style.backgroundColor = color;
+                    colorBox.style.border = '1px solid #ccc';
+                    colorBox.style.borderRadius = '3px';
+                    
+                    const label = document.createElement('span');
+                    label.className = 'legend-label';
+                    label.textContent = value;
+                    label.style.flex = '1';
+                    
+                    item.appendChild(colorBox);
+                    item.appendChild(label);
+                    legendContent.appendChild(item);
+                });
+                
+                hasItems = true;
+            }
+            
+            const allTypes = ['competency', 'technical_competency', 'impact', 'city', 'country', 'region', 'cohort'];
+            const typeLabels = {
+                competency: 'Competencies',
+                technical_competency: 'Technical Competencies',
+                impact: 'Impact',
+                city: 'Cities',
+                country: 'Countries',
+                region: 'Regions',
+                cohort: 'Cohorts'
+            };
+            
+            // Show all active edge filters with their colors
+            allTypes.forEach(type => {
+                if (activeFilters.values[type] && activeFilters.values[type].length > 0) {
+                    const header = document.createElement('div');
+                    header.style.fontWeight = 'bold';
+                    header.style.fontSize = '12px';
+                    header.style.marginTop = hasItems ? '12px' : '0';
+                    header.style.marginBottom = '6px';
+                    header.style.color = '#2c3e50';
+                    header.innerHTML = `🔗 ${typeLabels[type]} (Edges)`;
+                    legendContent.appendChild(header);
                     
                     activeFilters.values[type].forEach(value => {
                         const item = document.createElement('div');
@@ -719,7 +853,7 @@
                         colorPicker.style.border = 'none';
                         colorPicker.style.cursor = 'pointer';
                         colorPicker.style.padding = '0';
-                        colorPicker.title = 'Click to change color';
+                        colorPicker.title = 'Click to change edge color';
                         colorPicker.addEventListener('change', (e) => {
                             valueColors[type][value] = e.target.value;
                             applyFilters();
@@ -734,74 +868,13 @@
                         item.appendChild(label);
                         legendContent.appendChild(item);
                     });
-                });
-                
-                hasItems = true;
-            }
-            
-            // Add capability filters section (edge colors)
-            const activeCapTypes = capabilityTypes.filter(type => 
-                activeFilters.values[type] && activeFilters.values[type].length > 0
-            );
-            
-            if (activeCapTypes.length > 0) {
-                const capHeader = document.createElement('div');
-                capHeader.style.fontWeight = 'bold';
-                capHeader.style.fontSize = '12px';
-                capHeader.style.marginTop = hasItems ? '16px' : '0';
-                capHeader.style.marginBottom = '8px';
-                capHeader.style.color = '#2c3e50';
-                capHeader.innerHTML = '🔗 Edge Colors (Capabilities)';
-                legendContent.appendChild(capHeader);
-                
-                activeCapTypes.forEach(type => {
-                    const subHeader = document.createElement('div');
-                    subHeader.style.fontWeight = 'bold';
-                    subHeader.style.marginTop = '8px';
-                    subHeader.style.marginBottom = '4px';
-                    subHeader.style.fontSize = '10px';
-                    subHeader.style.color = '#7f8c8d';
-                    subHeader.textContent = typeLabels[type];
-                    legendContent.appendChild(subHeader);
                     
-                    activeFilters.values[type].forEach(value => {
-                        const item = document.createElement('div');
-                        item.className = 'legend-item';
-                        item.style.display = 'flex';
-                        item.style.alignItems = 'center';
-                        item.style.gap = '6px';
-                        item.style.marginLeft = '8px';
-                        
-                        const colorPicker = document.createElement('input');
-                        colorPicker.type = 'color';
-                        colorPicker.value = valueColors[type][value];
-                        colorPicker.style.width = '20px';
-                        colorPicker.style.height = '20px';
-                        colorPicker.style.border = 'none';
-                        colorPicker.style.cursor = 'pointer';
-                        colorPicker.style.padding = '0';
-                        colorPicker.title = 'Click to change color';
-                        colorPicker.addEventListener('change', (e) => {
-                            valueColors[type][value] = e.target.value;
-                            applyFilters();
-                        });
-                        
-                        const label = document.createElement('span');
-                        label.className = 'legend-label';
-                        label.textContent = value;
-                        label.style.flex = '1';
-                        
-                        item.appendChild(colorPicker);
-                        item.appendChild(label);
-                        legendContent.appendChild(item);
-                    });
-                });
-                
-                hasItems = true;
-            }
+                    hasItems = true;
+                }
+            });
             
             if (!hasItems) {
-                legendContent.innerHTML = '<div style="font-size: 11px; color: #95a5a6;">Select filters to see legend</div>';
+                legendContent.innerHTML = '<div style="font-size: 11px; color: #95a5a6;">Select filters or geography to see legend</div>';
             }
         }
         
@@ -935,33 +1008,47 @@
                 hoveredNode = event.node;
                 const nodeAttributes = graph.getNodeAttributes(event.node);
                 
-                // Get connected nodes
-                const connectedNodes = [];
+                // Show labels on connected nodes
                 graph.forEachEdge((edge, attributes) => {
                     const [source, target] = graph.extremities(edge);
                     if ((source === event.node || target === event.node) && !attributes.hidden) {
                         const connectedNode = source === event.node ? target : source;
                         const connectedAttrs = graph.getNodeAttributes(connectedNode);
-                        connectedNodes.push(connectedAttrs.label || connectedNode);
-                    }
-                });
-                
-                // Show tooltip with all attributes
-                showHoverTooltip(event.event.x, event.event.y, {
-                    title: nodeAttributes.label || event.node,
-                    type: 'node',
-                    attributes: nodeAttributes,
-                    connectedNodes: connectedNodes
-                });
-                
-                // Highlight connected edges
-                graph.forEachEdge((edge, attributes) => {
-                    const [source, target] = graph.extremities(edge);
-                    if ((source === event.node || target === event.node) && !attributes.hidden) {
+                        
+                        // Create floating label for connected node
+                        const nodePos = sigmaInstance.getNodeDisplayData(connectedNode);
+                        if (nodePos) {
+                            const label = document.createElement('div');
+                            label.className = 'connected-node-label';
+                            label.style.position = 'absolute';
+                            label.style.left = (nodePos.x + 10) + 'px';
+                            label.style.top = (nodePos.y - 10) + 'px';
+                            label.style.background = 'rgba(0,0,0,0.8)';
+                            label.style.color = 'white';
+                            label.style.padding = '4px 6px';
+                            label.style.borderRadius = '3px';
+                            label.style.fontSize = '11px';
+                            label.style.pointerEvents = 'none';
+                            label.style.zIndex = '9999';
+                            label.style.whiteSpace = 'nowrap';
+                            label.textContent = connectedAttrs.label || connectedNode;
+                            label.id = `label-${connectedNode}`;
+                            document.body.appendChild(label);
+                        }
+                        
+                        // Highlight connected edges
                         const originalSize = originalEdgeSizes.get(edge) || 1;
                         graph.setEdgeAttribute(edge, 'color', '#ff6b6b');
                         graph.setEdgeAttribute(edge, 'size', originalSize * 2);
                     }
+                });
+                
+                // Show comprehensive tooltip with persistent positioning
+                showDetailedTooltip(event.event.x, event.event.y, {
+                    title: nodeAttributes.label || event.node,
+                    type: 'node',
+                    attributes: nodeAttributes,
+                    nodeId: event.node
                 });
                 
                 sigmaInstance.refresh();
@@ -970,7 +1057,21 @@
             sigmaInstance.on('leaveNode', (event) => {
                 if (hoveredNode === event.node) {
                     hoveredNode = null;
-                    hideHoverTooltip();
+                    
+                    // Remove connected node labels
+                    document.querySelectorAll('.connected-node-label').forEach(label => {
+                        label.remove();
+                    });
+                    
+                    // Auto-hide tooltip with delay to allow moving to tooltip
+                    const tooltip = document.getElementById('detailed-tooltip');
+                    if (tooltip) {
+                        setTimeout(() => {
+                            if (!hoveredNode && tooltip.dataset.hovering !== 'true') {
+                                tooltip.style.display = 'none';
+                            }
+                        }, 100);
+                    }
                     
                     // Reapply filters to restore the correct filtered colors and sizes
                     applyFilters();
@@ -1011,8 +1112,15 @@
                 tooltipHTML += `<strong>Shared Connections (${edgeAttributes.weight}):</strong><br>`;
                 
                 const connections = [];
+                console.log('Building connections from attributes:', {
+                    technical_competencies: edgeAttributes.technical_competencies,
+                    cohorts: edgeAttributes.cohorts
+                });
                 if (edgeAttributes.competencies && edgeAttributes.competencies.length > 0) {
                     connections.push(`<span style="color: #f39c12;">●</span> <strong>Competencies:</strong> ${edgeAttributes.competencies.join(', ')}`);
+                }
+                if (edgeAttributes.technical_competencies && edgeAttributes.technical_competencies.length > 0) {
+                    connections.push(`<span style="color: #e67e22;">●</span> <strong>Technical Competencies:</strong> ${edgeAttributes.technical_competencies.join(', ')}`);
                 }
                 if (edgeAttributes.impacts && edgeAttributes.impacts.length > 0) {
                     connections.push(`<span style="color: #9b59b6;">●</span> <strong>Impacts:</strong> ${edgeAttributes.impacts.join(', ')}`);
@@ -1025,6 +1133,9 @@
                 }
                 if (edgeAttributes.regions && edgeAttributes.regions.length > 0) {
                     connections.push(`<span style="color: #3498db;">●</span> <strong>Regions:</strong> ${edgeAttributes.regions.join(', ')}`);
+                }
+                if (edgeAttributes.cohorts && edgeAttributes.cohorts.length > 0) {
+                    connections.push(`<span style="color: #1abc9c;">●</span> <strong>Cohorts:</strong> ${edgeAttributes.cohorts.join(', ')}`);
                 }
                 
                 tooltipHTML += connections.join('<br>');
@@ -1050,6 +1161,140 @@
                     applyFilters();
                 }
             });
+        }
+        
+        function showDetailedTooltip(x, y, data) {
+            let tooltip = document.getElementById('detailed-tooltip');
+            if (!tooltip) {
+                tooltip = document.createElement('div');
+                tooltip.id = 'detailed-tooltip';
+                tooltip.style.position = 'fixed';
+                tooltip.style.background = 'rgba(255,255,255,0.98)';
+                tooltip.style.color = '#2c3e50';
+                tooltip.style.padding = '16px';
+                tooltip.style.borderRadius = '8px';
+                tooltip.style.fontSize = '13px';
+                tooltip.style.zIndex = '10001';
+                tooltip.style.maxWidth = '400px';
+                tooltip.style.maxHeight = '500px';
+                tooltip.style.overflowY = 'auto';
+                tooltip.style.lineHeight = '1.5';
+                tooltip.style.boxShadow = '0 8px 32px rgba(0,0,0,0.2)';
+                tooltip.style.border = '1px solid #e1e8ed';
+                tooltip.style.pointerEvents = 'auto';
+                tooltip.style.cursor = 'default';
+                
+                // Add mouse event handlers for auto-hide functionality
+                tooltip.onmouseenter = () => {
+                    tooltip.dataset.hovering = 'true';
+                };
+                tooltip.onmouseleave = () => {
+                    tooltip.dataset.hovering = 'false';
+                    // Small delay to allow moving between node and tooltip
+                    setTimeout(() => {
+                        if (tooltip.dataset.hovering === 'false' && !hoveredNode) {
+                            tooltip.style.display = 'none';
+                            document.querySelectorAll('.connected-node-label').forEach(label => label.remove());
+                        }
+                    }, 100);
+                };
+                
+                document.body.appendChild(tooltip);
+            }
+            
+            if (data.type === 'node' && data.attributes) {
+                let html = `<div style="padding-right: 24px;"><strong style="font-size: 16px; color: #2c3e50;">${data.title}</strong></div><br>`;
+                
+                // Collect all node information from edges
+                const nodeInfo = {
+                    competencies: new Set(),
+                    technical_competencies: new Set(),
+                    impacts: new Set(),
+                    cities: new Set(),
+                    countries: new Set(),
+                    regions: new Set(),
+                    cohorts: new Set()
+                };
+                
+                // Find this node's information from edges
+                graph.forEachEdge((edge, attributes) => {
+                    const [source, target] = graph.extremities(edge);
+                    if (source === data.nodeId || target === data.nodeId) {
+                        if (attributes.competencies) attributes.competencies.forEach(c => nodeInfo.competencies.add(c));
+                        if (attributes.technical_competencies) attributes.technical_competencies.forEach(c => nodeInfo.technical_competencies.add(c));
+                        if (attributes.impacts) attributes.impacts.forEach(i => nodeInfo.impacts.add(i));
+                        if (attributes.cities) attributes.cities.forEach(c => nodeInfo.cities.add(c));
+                        if (attributes.countries) attributes.countries.forEach(c => nodeInfo.countries.add(c));
+                        if (attributes.regions) attributes.regions.forEach(r => nodeInfo.regions.add(r));
+                        if (attributes.cohorts) attributes.cohorts.forEach(c => nodeInfo.cohorts.add(c));
+                    }
+                });
+                
+                // Show basic attributes
+                if (data.attributes.description && data.attributes.description.trim()) {
+                    html += `<div style="margin-bottom: 12px;"><strong>Description:</strong><br><div style="background: #f8f9fa; padding: 8px; border-radius: 4px; font-size: 12px;">${data.attributes.description}</div></div>`;
+                }
+                
+                if (data.attributes.website && data.attributes.website.trim()) {
+                    html += `<div style="margin-bottom: 12px;"><strong>Website:</strong><br><a href="${data.attributes.website}" target="_blank" style="color: #3498db; text-decoration: none;">${data.attributes.website}</a></div>`;
+                }
+                
+                // Show collected information
+                const sections = [
+                    { key: 'competencies', label: 'Core Competencies', icon: '💡' },
+                    { key: 'technical_competencies', label: 'Technical Competencies', icon: '🔧' },
+                    { key: 'impacts', label: 'Impact Areas', icon: '🎯' },
+                    { key: 'cities', label: 'Cities', icon: '🏙️' },
+                    { key: 'countries', label: 'Countries', icon: '🌍' },
+                    { key: 'regions', label: 'Regions', icon: '🗺️' },
+                    { key: 'cohorts', label: 'Cohorts', icon: '🎓' }
+                ];
+                
+                sections.forEach(section => {
+                    const items = Array.from(nodeInfo[section.key]);
+                    if (items.length > 0) {
+                        html += `<div style="margin-bottom: 12px;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px;">
+                                <strong>${section.icon} ${section.label}:</strong>
+                                <button onclick="addAllToFilters('${section.key}', ${JSON.stringify(items).replace(/"/g, '&quot;')})" 
+                                        style="background: #3498db; color: white; border: none; padding: 4px 8px; border-radius: 4px; font-size: 10px; cursor: pointer; margin-left: 8px;"
+                                        onmouseover="this.style.background='#2980b9'" 
+                                        onmouseout="this.style.background='#3498db'">
+                                    Add All
+                                </button>
+                            </div>`;
+                        html += `<div style="background: #f8f9fa; padding: 8px; border-radius: 4px; font-size: 12px;">`;
+                        items.sort().forEach(item => {
+                            html += `<span style="display: inline-block; background: #ecf0f1; padding: 2px 6px; margin: 2px; border-radius: 3px; font-size: 11px;">${item}</span>`;
+                        });
+                        html += `</div></div>`;
+                    }
+                });
+                
+                tooltip.innerHTML = html;
+                
+                // Add close button again (since innerHTML overwrites)
+                const closeBtn = document.createElement('button');
+                closeBtn.innerHTML = '×';
+                closeBtn.style.position = 'absolute';
+                closeBtn.style.right = '8px';
+                closeBtn.style.top = '8px';
+                closeBtn.style.background = 'none';
+                closeBtn.style.border = 'none';
+                closeBtn.style.fontSize = '18px';
+                closeBtn.style.cursor = 'pointer';
+                closeBtn.style.color = '#7f8c8d';
+                closeBtn.onclick = () => {
+                    tooltip.style.display = 'none';
+                    document.querySelectorAll('.connected-node-label').forEach(label => label.remove());
+                };
+                tooltip.appendChild(closeBtn);
+            }
+            
+            // Position tooltip
+            tooltip.style.left = Math.min(x + 15, window.innerWidth - 420) + 'px';
+            tooltip.style.top = Math.min(y + 15, window.innerHeight - Math.min(500, tooltip.offsetHeight || 300)) + 'px';
+            tooltip.style.display = 'block';
         }
         
         function showHoverTooltip(x, y, data) {
@@ -1173,36 +1418,105 @@
                 showLabels ? '🏷️ Hide Labels' : '🏷️ Show Labels';
         }
         
-        function toggleColorMode(mode) {
-            colorMode = mode;
-            applyFilters();
-        }
-        
         function toggleAdvancedSettings() {
             const advancedSettings = document.getElementById('advanced-settings');
             advancedSettings.classList.toggle('hidden');
         }
         
-        function toggleColorMode(mode) {
-            colorMode = mode;
-            applyFilters();
+        function toggleNodeGeography(geoType) {
+            // Toggle the geography mode
+            if (nodeGeographyMode === geoType) {
+                nodeGeographyMode = null; // Turn off if already active
+            } else {
+                nodeGeographyMode = geoType; // Set new geography mode
+            }
+            
+            // Update button styles
+            ['country', 'region', 'city'].forEach(type => {
+                const btn = document.getElementById(`node-${type}-btn`);
+                if (type === nodeGeographyMode) {
+                    btn.classList.add('active');
+                } else {
+                    btn.classList.remove('active');
+                }
+            });
+            
+            applyNodeGeographyColoring();
         }
         
-        function toggleAdvancedSettings() {
-            const advancedSettings = document.getElementById('advanced-settings');
-            advancedSettings.classList.toggle('hidden');
+        function resetNodeColors() {
+            nodeGeographyMode = null;
+            ['country', 'region', 'city'].forEach(type => {
+                document.getElementById(`node-${type}-btn`).classList.remove('active');
+            });
+            
+            // Reset all nodes to original colors
+            graph.forEachNode((node) => {
+                const originalColor = originalNodeColors.get(node) || '#95a5a6';
+                graph.setNodeAttribute(node, 'color', originalColor);
+            });
+            
+            sigmaInstance.refresh();
         }
         
-        function toggleFilterMode() {
-            filterMode = filterMode === 'OR' ? 'AND' : 'OR';
-            const btn = document.getElementById('filter-mode-btn');
-            btn.textContent = `Logic: ${filterMode}`;
-            btn.style.backgroundColor = filterMode === 'AND' ? '#27ae60' : '#34495e';
-            updateFilters();
+        function applyNodeGeographyColoring() {
+            if (!nodeGeographyMode) {
+                resetNodeColors();
+                return;
+            }
+            
+            // Reset all nodes to original color first
+            graph.forEachNode((node) => {
+                const originalColor = originalNodeColors.get(node) || '#95a5a6';
+                graph.setNodeAttribute(node, 'color', originalColor);
+            });
+            
+            // Collect unique geographic values
+            const geoValues = new Set();
+            const nodeGeoMap = new Map();
+            
+            graph.forEachEdge((edge, attributes) => {
+                const [source, target] = graph.extremities(edge);
+                let edgeGeoValues = [];
+                
+                if (nodeGeographyMode === 'country' && attributes.countries) {
+                    edgeGeoValues = attributes.countries;
+                } else if (nodeGeographyMode === 'region' && attributes.regions) {
+                    edgeGeoValues = attributes.regions;
+                } else if (nodeGeographyMode === 'city' && attributes.cities) {
+                    edgeGeoValues = attributes.cities;
+                }
+                
+                edgeGeoValues.forEach(geoValue => {
+                    geoValues.add(geoValue);
+                    
+                    if (!nodeGeoMap.has(source)) nodeGeoMap.set(source, new Set());
+                    if (!nodeGeoMap.has(target)) nodeGeoMap.set(target, new Set());
+                    nodeGeoMap.get(source).add(geoValue);
+                    nodeGeoMap.get(target).add(geoValue);
+                });
+            });
+            
+            // Assign colors to geographic values
+            const geoValueColors = {};
+            Array.from(geoValues).sort().forEach((value, index) => {
+                geoValueColors[value] = diversePalette[index % diversePalette.length];
+            });
+            
+            // Color nodes based on their primary geographic value
+            nodeGeoMap.forEach((geoSet, nodeId) => {
+                const primaryGeo = Array.from(geoSet)[0]; // Use first geo value for coloring
+                if (primaryGeo && geoValueColors[primaryGeo]) {
+                    graph.setNodeAttribute(nodeId, 'color', geoValueColors[primaryGeo]);
+                }
+            });
+            
+            sigmaInstance.refresh();
+            updateLegend();
         }
         
         function clearAllFilters() {
-            ['filter-competency', 'filter-impact', 'filter-city', 'filter-country', 'filter-region'].forEach(id => {
+            ['filter-competency', 'filter-technical_competency', 'filter-impact', 'filter-city', 'filter-country', 'filter-region', 'filter-cohort'].forEach(id => {
                 document.getElementById(id).checked = false;
             });
             
@@ -1230,7 +1544,7 @@
             document.getElementById('weight-max-value').textContent = weightMax;
             
             const typeFilters = [];
-            ['competency', 'impact', 'city', 'country', 'region'].forEach(type => {
+            ['competency', 'technical_competency', 'impact', 'city', 'country', 'region', 'cohort'].forEach(type => {
                 if (document.getElementById(`filter-${type}`).checked) {
                     typeFilters.push(type);
                 }
@@ -1251,14 +1565,83 @@
             applyFilters();
         }
         
+        function addAllToFilters(category, items) {
+            // Map the categories to their corresponding filter keys in activeFilters.values
+            const filterMappings = {
+                'competencies': 'competency',
+                'technical_competencies': 'technical_competency',
+                'impacts': 'impact',
+                'cities': 'city',
+                'countries': 'country',
+                'regions': 'region',
+                'cohorts': 'cohort'
+            };
+            
+            const filterKey = filterMappings[category];
+            if (!filterKey) {
+                console.warn('Unknown category:', category);
+                return;
+            }
+            
+            // Check the type checkbox to enable this filter type
+            const typeCheckbox = document.getElementById(`filter-${filterKey}`);
+            if (typeCheckbox && !typeCheckbox.checked) {
+                typeCheckbox.checked = true;
+                // Show the submenu
+                const submenu = document.getElementById(`submenu-${filterKey}`);
+                if (submenu) {
+                    submenu.classList.add('active');
+                }
+            }
+            
+            // Initialize the filter array if it doesn't exist
+            if (!activeFilters.values[filterKey]) {
+                activeFilters.values[filterKey] = [];
+            }
+            
+            // Add all items to the filter if they're not already there
+            let addedCount = 0;
+            items.forEach(item => {
+                if (!activeFilters.values[filterKey].includes(item)) {
+                    activeFilters.values[filterKey].push(item);
+                    // Assign color to the new filter value
+                    assignColorToValue(filterKey, item);
+                    addedCount++;
+                }
+                
+                // Check the corresponding checkbox in the UI
+                const checkbox = document.querySelector(`input[type="checkbox"][data-type="${filterKey}"][data-value="${item}"]`);
+                if (checkbox && !checkbox.checked) {
+                    checkbox.checked = true;
+                }
+            });
+            
+            // Update the UI to show the new filters
+            updateFilters();
+            
+            // Apply the filters
+            applyFilters();
+            
+            // Provide feedback
+            if (addedCount > 0) {
+                console.log(`Added ${addedCount} ${category} to ${filterKey} filters:`, items);
+                // You could add a visual feedback here like a toast notification
+            } else {
+                console.log(`All ${category} already in filters`);
+            }
+        }
+        
         function applyFilters() {
             if (!graph || !sigmaInstance) return;
             
-            // Show all initially and reset colors
+            // Show all nodes initially, but preserve geography colors if active
             graph.forEachNode((node) => {
                 graph.setNodeAttribute(node, 'hidden', false);
-                const originalColor = originalNodeColors.get(node) || '#95a5a6';
-                graph.setNodeAttribute(node, 'color', originalColor);
+                // Only reset node color if no geography mode is active
+                if (!nodeGeographyMode) {
+                    const originalColor = originalNodeColors.get(node) || '#95a5a6';
+                    graph.setNodeAttribute(node, 'color', originalColor);
+                }
             });
             
             graph.forEachEdge((edge) => {
@@ -1269,59 +1652,50 @@
                 graph.setEdgeAttribute(edge, 'size', originalSize);
             });
             
-            // Apply edge type filters (with value-specific filtering)
-            if (activeFilters.types.length > 0) {
+            // Collect which types have active filters (values selected)
+            const activeFilterTypes = [];
+            for (const type of ['competency', 'technical_competency', 'impact', 'city', 'country', 'region', 'cohort']) {
+                if (activeFilters.values[type] && activeFilters.values[type].length > 0) {
+                    activeFilterTypes.push(type);
+                }
+            }
+            
+            // Apply edge type filters with faceted search logic
+            // AND between categories (types), OR within each category
+            if (activeFilterTypes.length > 0) {
                 graph.forEachEdge((edge, attributes) => {
-                    let shouldShow;
-                    
-                    if (filterMode === 'OR') {
-                        // OR logic: show edge if it matches ANY selected type
-                        shouldShow = activeFilters.types.some(type => {
-                            // First check if this edge has this type
-                            if (attributes[`is_${type}`] !== true) return false;
-                            
-                            // If specific values are selected for this type, check those
-                            if (activeFilters.values[type] && activeFilters.values[type].length > 0) {
-                                const edgeValues = attributes[`${type === 'competency' ? 'competencies' : 
-                                                              type === 'impact' ? 'impacts' : 
-                                                              type === 'city' ? 'cities' : 
-                                                              type === 'country' ? 'countries' : 'regions'}`] || [];
-                                // Edge must have at least one of the selected values
-                                return activeFilters.values[type].some(val => edgeValues.includes(val));
-                            }
-                            
-                            return true;
-                        });
-                    } else {
-                        // AND logic: show edge if it matches ALL selected types
-                        shouldShow = activeFilters.types.every(type => {
-                            // First check if this edge has this type
-                            if (attributes[`is_${type}`] !== true) return false;
-                            
-                            // If specific values are selected for this type, check those
-                            if (activeFilters.values[type] && activeFilters.values[type].length > 0) {
-                                const edgeValues = attributes[`${type === 'competency' ? 'competencies' : 
-                                                              type === 'impact' ? 'impacts' : 
-                                                              type === 'city' ? 'cities' : 
-                                                              type === 'country' ? 'countries' : 'regions'}`] || [];
-                                // Edge must have at least one of the selected values
-                                return activeFilters.values[type].some(val => edgeValues.includes(val));
-                            }
-                            
-                            return true;
-                        });
-                    }
+                    // Faceted search: edge must match at least one value from EACH active type
+                    const shouldShow = activeFilterTypes.every(type => {
+                        // Check if this edge has this type
+                        if (!attributes[`is_${type}`]) return false;
+                        
+                        // Get edge values for this type
+                        const edgeValues = attributes[`${type === 'competency' ? 'competencies' : 
+                                                      type === 'technical_competency' ? 'technical_competencies' : 
+                                                      type === 'impact' ? 'impacts' : 
+                                                      type === 'city' ? 'cities' : 
+                                                      type === 'country' ? 'countries' : 
+                                                      type === 'region' ? 'regions' : 'cohorts'}`] || [];
+                        
+                        // Edge must match at least ONE selected value for this type (OR within)
+                        return activeFilters.values[type].some(val => edgeValues.includes(val));
+                    });
                     
                     graph.setEdgeAttribute(edge, 'hidden', !shouldShow);
                     
-                    // Color code EDGES only for non-geographic types (competency, impact)
+                    // Color edges based on filtered values
                     if (shouldShow) {
                         let assignedColor = null;
                         
-                        // Only color edges for capability/impact filters
-                        for (const type of ['competency', 'impact']) {
+                        // Color edges for any active filter type
+                        for (const type of ['competency', 'technical_competency', 'impact', 'city', 'country', 'region', 'cohort']) {
                             if (activeFilters.values[type] && activeFilters.values[type].length > 0 && attributes[`is_${type}`]) {
-                                const edgeValues = attributes[`${type === 'competency' ? 'competencies' : 'impacts'}`] || [];
+                                const edgeValues = attributes[`${type === 'competency' ? 'competencies' : 
+                                                              type === 'technical_competency' ? 'technical_competencies' : 
+                                                              type === 'impact' ? 'impacts' : 
+                                                              type === 'city' ? 'cities' : 
+                                                              type === 'country' ? 'countries' : 
+                                                              type === 'region' ? 'regions' : 'cohorts'}`] || [];
                                 
                                 // Find first matching value
                                 for (const value of activeFilters.values[type]) {
@@ -1337,14 +1711,6 @@
                         
                         if (assignedColor) {
                             graph.setEdgeAttribute(edge, 'color', assignedColor);
-                        } else if (activeFilters.types.length === 1 && (activeFilters.types[0] === 'competency' || activeFilters.types[0] === 'impact')) {
-                            // Fallback: color by type if single capability filter
-                            const type = activeFilters.types[0];
-                            const colors = {
-                                'competency': '#f39c12',
-                                'impact': '#9b59b6'
-                            };
-                            graph.setEdgeAttribute(edge, 'color', colors[type] || '#bdc3c7');
                         }
                     }
                 });
@@ -1359,74 +1725,6 @@
                     }
                 }
             });
-            
-            // Apply geographic colors based on colorMode (nodes or edges)
-            const geoTypes = ['city', 'country', 'region'];
-            const activeGeoFilters = geoTypes.filter(type => 
-                activeFilters.values[type] && activeFilters.values[type].length > 0
-            );
-            
-            if (activeGeoFilters.length > 0) {
-                if (colorMode === 'node') {
-                    // COLOR NODES based on geographic filters
-                    const nodeGeoValues = new Map();
-                    
-                    graph.forEachEdge((edge, attributes) => {
-                        if (attributes.hidden) return;
-                        
-                        const [source, target] = graph.extremities(edge);
-                        
-                        // Check if this edge matches any geographic filter
-                        for (const type of activeGeoFilters) {
-                            const edgeValues = attributes[`${type === 'city' ? 'cities' : 
-                                                          type === 'country' ? 'countries' : 'regions'}`] || [];
-                            
-                            for (const value of activeFilters.values[type]) {
-                                if (edgeValues.includes(value)) {
-                                    if (!nodeGeoValues.has(source)) nodeGeoValues.set(source, new Set());
-                                    if (!nodeGeoValues.has(target)) nodeGeoValues.set(target, new Set());
-                                    nodeGeoValues.get(source).add({type, value});
-                                    nodeGeoValues.get(target).add({type, value});
-                                }
-                            }
-                        }
-                    });
-                    
-                    nodeGeoValues.forEach((geoSet, nodeId) => {
-                        const firstGeo = Array.from(geoSet)[0];
-                        if (firstGeo && valueColors[firstGeo.type] && valueColors[firstGeo.type][firstGeo.value]) {
-                            graph.setNodeAttribute(nodeId, 'color', valueColors[firstGeo.type][firstGeo.value]);
-                        }
-                    });
-                } else {
-                    // COLOR EDGES based on geographic filters
-                    graph.forEachEdge((edge, attributes) => {
-                        if (attributes.hidden) return;
-                        
-                        let assignedColor = null;
-                        
-                        for (const type of activeGeoFilters) {
-                            if (attributes[`is_${type}`]) {
-                                const edgeValues = attributes[`${type === 'city' ? 'cities' : 
-                                                              type === 'country' ? 'countries' : 'regions'}`] || [];
-                                
-                                for (const value of activeFilters.values[type]) {
-                                    if (edgeValues.includes(value)) {
-                                        assignedColor = valueColors[type][value];
-                                        break;
-                                    }
-                                }
-                                
-                                if (assignedColor) break;
-                            }
-                        }
-                        
-                        if (assignedColor) {
-                            graph.setEdgeAttribute(edge, 'color', assignedColor);
-                        }
-                    });
-                }
-            }
             
             // Apply node search filter
             if (activeFilters.searchText) {
